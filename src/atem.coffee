@@ -98,11 +98,16 @@ class ATEM
 
   constructor: (options = {}) ->
     @forceOldStyle = options.forceOldStyle || false
+    @localPort = options.localPort || 1024 + Math.floor(Math.random() * 64511) # 1024-65535
 
     @event = new EventEmitter
     @commandEvent = new EventEmitter
     @event.on 'ping', (err) =>
       @lastConnectAt = new Date().getTime()
+
+    @socket = dgram.createSocket 'udp4'
+    @socket.on 'message', @_receivePacket
+    @socket.bind @localPort
 
     setInterval( =>
       return if @lastConnectAt + RECONNECT_INTERVAL > new Date().getTime()
@@ -115,12 +120,6 @@ class ATEM
     , RECONNECT_INTERVAL)
 
   connect: (@address, @port = DEFAULT_PORT, local_port = 0) ->
-    local_port ||= 1024 + Math.floor(Math.random() * 64511) # 1024-65535
-
-    @socket = dgram.createSocket 'udp4'
-    @socket.on 'message', @_receivePacket
-    @socket.bind local_port
-
     @_sendPacket COMMAND_CONNECT_HELLO
     @connectionState = ATEM.ConnectionState.SynSent
 
@@ -464,11 +463,6 @@ class ATEM
 
 
 
-  setTransitionMixRate: (rate, me = 0) ->
-    @_sendCommand('CTMx', [me, rate])
-
-
-
   setTransitionDipRate: (rate, me = 0) ->
     @_sendCommand('CTDp', [0x01, me, rate, 0x00, 0x00])
 
@@ -572,6 +566,8 @@ class ATEM
     @_sendCommand('CTSt', [0x01, 0x00, me, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, frames >> 8, frames & 0xFF])
 
 
+  changeTransitionMix: (frames, me = 0) ->
+    @_sendCommand('CTMx', [me, frames, 0x00, 0x00])
 
   changeUpstreamKeyState: (number, state, me = 0) ->
     @_sendCommand('CKOn', [me, number, state, 0x00])
@@ -598,6 +594,9 @@ class ATEM
 
   changeDownstreamKeyTie: (number, state) ->
     @_sendCommand('CDsT', [number, state, 0xff, 0xff])
+
+  autoDownstreamKey: (number) ->
+    @_sendCommand('DDsA', [number, 0x00, 0x00, 0x00])
 
   changeAudioMasterGain: (gain) ->
     gain = gain * AUDIO_GAIN_RATE
